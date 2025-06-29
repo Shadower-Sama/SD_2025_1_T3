@@ -1,0 +1,6 @@
+pymongo==4.6.0
+pandas==2.1.0
+subprocess32==3.5.4
+tempfile
+logging
+json

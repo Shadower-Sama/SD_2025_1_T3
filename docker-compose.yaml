@@ -1,0 +1,239 @@
+version: '3.8'
+
+services:
+  # Base de datos MongoDB para almacenamiento
+  mongodb:
+    image: mongo:5.0
+    container_name: traffic_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - traffic_network
+
+  # Redis para caché
+  redis:
+    image: redis:7-alpine
+    container_name: traffic_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - traffic_network
+
+  # Elasticsearch para visualización
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: traffic_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - traffic_network
+
+  # Kibana para visualización
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    container_name: traffic_kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - traffic_network
+
+  # Hadoop para procesamiento distribuido
+  hadoop:
+    image: apache/hadoop:3.3.4
+    container_name: traffic_hadoop
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    ports:
+      - "9870:9870"  # NameNode Web UI
+      - "8088:8088"  # ResourceManager Web UI
+    volumes:
+      - hadoop_data:/opt/hadoop/logs
+    networks:
+      - traffic_network
+
+  # Scraper - Extracción de datos de Waze
+  scraper:
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    container_name: traffic_scraper
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - SCRAPE_INTERVAL=300  # 5 minutos
+    depends_on:
+      - mongodb
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+  # Data Processor - Filtrado y homogeneización
+  data_processor:
+    build:
+      context: ./data_processor
+      dockerfile: Dockerfile
+    container_name: traffic_data_processor
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - PROCESSING_MODE=continuous
+      - PROCESSING_INTERVAL=600  # 10 minutos
+      - BATCH_SIZE=1000
+    depends_on:
+      - mongodb
+      - scraper
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+  # Generador de tráfico sintético
+  traffic_generator:
+    build:
+      context: ./traffic_generator
+      dockerfile: Dockerfile
+    container_name: traffic_generator
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - CACHE_URI=http://cache_system:8080
+      - POISSON_LAMBDA=10
+      - EXPONENTIAL_LAMBDA=0.1
+      - TRAFFIC_MODE=comparative
+      - TEST_DURATION_MINUTES=10
+    depends_on:
+      - mongodb
+      - cache_system
+      - data_processor
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    profiles:
+      - testing
+
+  # Sistema de caché
+  cache_system:
+    build:
+      context: ./cache_system
+      dockerfile: Dockerfile
+    container_name: traffic_cache
+    environment:
+      - REDIS_URI=redis://redis:6379
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - CACHE_POLICY=LRU  # LRU, LFU, FIFO
+      - CACHE_SIZE=1000
+    depends_on:
+      - redis
+      - mongodb
+      - data_processor
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+  # Procesamiento con Apache Pig
+  pig_processor:
+    build:
+      context: ./pig_processor
+      dockerfile: Dockerfile
+    container_name: traffic_pig
+    environment:
+      - HADOOP_URI=hadoop:9000
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - PROCESSING_MODE=full_pipeline
+    depends_on:
+      - hadoop
+      - mongodb
+      - data_processor
+    volumes:
+      - ./pig_scripts:/app/scripts
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    profiles:
+      - analysis
+
+  # Módulo de visualización
+  visualization:
+    build:
+      context: ./visualization
+      dockerfile: Dockerfile
+    container_name: traffic_visualization
+    environment:
+      - ELASTICSEARCH_URI=http://elasticsearch:9200
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - CACHE_URI=http://cache_system:8080
+      - VISUALIZATION_MODE=full_sync
+    depends_on:
+      - elasticsearch
+      - mongodb
+      - data_processor
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+  # API Gateway
+  api_gateway:
+    build:
+      context: ./api_gateway
+      dockerfile: Dockerfile
+    container_name: traffic_api
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin
+      - REDIS_URI=redis://redis:6379
+      - ELASTICSEARCH_URI=http://elasticsearch:9200
+      - CACHE_SERVICE_URI=http://cache_system:8080
+      - VISUALIZATION_URI=http://visualization:3000
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - WORKERS=4
+    depends_on:
+      - mongodb
+      - redis
+      - elasticsearch
+      - cache_system
+      - visualization
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+networks:
+  traffic_network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:
+  elasticsearch_data:
+  hadoop_data:
+

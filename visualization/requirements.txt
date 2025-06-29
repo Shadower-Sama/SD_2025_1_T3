@@ -1,0 +1,7 @@
+elasticsearch==8.8.0
+pymongo==4.6.0
+requests==2.31.0
+pandas==2.1.0
+numpy==1.25.0
+logging
+json
