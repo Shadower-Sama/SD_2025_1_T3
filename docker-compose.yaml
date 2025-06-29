@@ -236,4 +236,3 @@ volumes:
   redis_data:
   elasticsearch_data:
   hadoop_data:
-
