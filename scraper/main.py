@@ -18,7 +18,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import requests
 
-# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -39,7 +38,6 @@ class WazeScraper:
         self.db = None
         self.collection = None
         
-        # Coordenadas de la Región Metropolitana
         self.RM_BOUNDS = {
             'north': -33.0,
             'south': -34.0,
@@ -47,7 +45,6 @@ class WazeScraper:
             'west': -71.5
         }
         
-        # Configuración de Chrome para scraping
         self.chrome_options = Options()
         self.chrome_options.add_argument('--headless')
         self.chrome_options.add_argument('--no-sandbox')
@@ -62,7 +59,6 @@ class WazeScraper:
             self.db = self.client.traffic_db
             self.collection = self.db.waze_events
             
-            # Crear índices para optimizar consultas
             self.collection.create_index([("timestamp", pymongo.DESCENDING)])
             self.collection.create_index([("location", pymongo.GEO2D)])
             self.collection.create_index([("event_type", 1)])
@@ -80,8 +76,7 @@ class WazeScraper:
         """
         events = []
         
-        # URL de la API de Waze (no oficial)
-        waze_api_url = "https://www.waze.com/live-map/api/georss?top=-33.318727734058896&bottom=-33.646196973860725&left=-70.77952194213869&right=-70.502254486084&env=row&types=alerts,traffic"
+        waze_api_url = "https://www.waze.com/row-rtserver/web/TGeoRSS"
         
         params = {
             'tk': 'ccp_partner',
@@ -100,14 +95,12 @@ class WazeScraper:
                     if response.status == 200:
                         data = await response.json()
                         
-                        # Procesar alertas
                         if 'alerts' in data:
                             for alert in data['alerts']:
                                 event = self.process_alert(alert)
                                 if event:
                                     events.append(event)
                         
-                        # Procesar atascos
                         if 'jams' in data:
                             for jam in data['jams']:
                                 event = self.process_jam(jam)
@@ -131,17 +124,14 @@ class WazeScraper:
         try:
             driver = webdriver.Chrome(options=self.chrome_options)
             
-            # Navegar a Waze Live Map centrado en Santiago
             santiago_url = "https://www.waze.com/es-419/live-map/directions?"
             santiago_url += "to=ll.-33.4489%2C-70.6693&from=ll.-33.4489%2C-70.6693"
             
             driver.get(santiago_url)
             
-            # Esperar a que cargue la página
             wait = WebDriverWait(driver, 20)
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             
-            # Buscar elementos de eventos en el mapa
             event_selectors = [
                 '[data-testid*="alert"]',
                 '[data-testid*="jam"]',
@@ -154,7 +144,7 @@ class WazeScraper:
                 try:
                     elements = driver.find_elements(By.CSS_SELECTOR, selector)
                     
-                    for element in elements[:50]:  # Limitar a 50 eventos por selector
+                    for element in elements[:50]:  
                         try:
                             event_data = self.extract_event_data(element)
                             if event_data:
@@ -238,11 +228,11 @@ class WazeScraper:
     def extract_event_data(self, element) -> Optional[Dict]:
         """Extrae datos de un elemento del DOM"""
         try:
-            # Obtener información básica del elemento
+            
             event_type = 'unknown'
             description = ''
             
-            # Intentar determinar el tipo de evento por clases CSS
+           
             class_names = element.get_attribute('class') or ''
             if 'alert' in class_names.lower():
                 event_type = 'alert'
@@ -251,7 +241,7 @@ class WazeScraper:
             elif 'accident' in class_names.lower():
                 event_type = 'accident'
             
-            # Intentar obtener texto descriptivo
+            
             try:
                 description = element.get_attribute('title') or element.text or ''
             except:
@@ -263,7 +253,7 @@ class WazeScraper:
                 'subtype': 'web_scraped',
                 'description': description,
                 'location': {
-                    'lat': -33.4489,  # Santiago centro por defecto
+                    'lat': -33.4489,  
                     'lng': -70.6693
                 },
                 'street': 'Unknown',
@@ -282,7 +272,7 @@ class WazeScraper:
         if not lat or not lng:
             return 'Unknown'
         
-        # Mapeo básico de coordenadas a comunas principales de la RM
+        
         municipalities = {
             'Santiago': {'lat_range': (-33.47, -33.42), 'lng_range': (-70.68, -70.63)},
             'Las Condes': {'lat_range': (-33.42, -33.38), 'lng_range': (-70.68, -70.50)},
@@ -308,7 +298,7 @@ class WazeScraper:
             return
         
         try:
-            # Eliminar duplicados basados en event_id
+            
             unique_events = []
             seen_ids = set()
             
@@ -322,7 +312,7 @@ class WazeScraper:
                 logger.info(f"Guardados {len(result.inserted_ids)} eventos únicos")
             
         except pymongo.errors.BulkWriteError as e:
-            # Ignorar errores de duplicados
+            
             logger.info(f"Algunos eventos ya existían: {len(e.details['writeErrors'])} duplicados")
             
         except Exception as e:
@@ -340,7 +330,7 @@ class WazeScraper:
             municipality = random.choice(municipalities)
             event_type = random.choice(event_types)
             
-            # Coordenadas aleatorias dentro de la RM
+            
             lat = random.uniform(-33.7, -33.3)
             lng = random.uniform(-70.9, -70.4)
             
@@ -371,35 +361,35 @@ class WazeScraper:
             try:
                 all_events = []
                 
-                # Intentar API primero
+                
                 api_events = await self.get_waze_data_api()
                 all_events.extend(api_events)
                 
-                # Si no hay suficientes eventos, intentar web scraping
+                
                 if len(api_events) < 10:
                     web_events = self.scrape_waze_web()
                     all_events.extend(web_events)
                 
-                # Si aún no hay suficientes eventos, generar sintéticos
+                
                 if len(all_events) < 50:
                     synthetic_events = self.generate_synthetic_events(100)
                     all_events.extend(synthetic_events)
                     logger.info("Agregados eventos sintéticos para pruebas")
                 
-                # Guardar eventos
+               
                 self.save_events(all_events)
                 
-                # Estadísticas
+                
                 total_events = self.collection.count_documents({})
                 logger.info(f"Total de eventos en base de datos: {total_events}")
                 
-                # Esperar hasta el próximo scraping
+                
                 logger.info(f"Esperando {self.scrape_interval} segundos para próximo scraping")
                 await asyncio.sleep(self.scrape_interval)
                 
             except Exception as e:
                 logger.error(f"Error en ciclo de scraping: {e}")
-                await asyncio.sleep(60)  # Esperar 1 minuto antes de reintentar
+                await asyncio.sleep(60)  
 
 def main():
     """Función principal"""
@@ -409,7 +399,7 @@ def main():
     scraper = WazeScraper(mongodb_uri, scrape_interval)
     scraper.connect_database()
     
-    # Ejecutar scraper
+    
     asyncio.run(scraper.run_scraper())
 
 if __name__ == "__main__":

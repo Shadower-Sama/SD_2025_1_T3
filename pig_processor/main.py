@@ -10,7 +10,6 @@ from typing import Dict, List, Optional
 from pymongo import MongoClient
 import pandas as pd
 
-# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -24,14 +23,12 @@ class PigDataProcessor:
         self.mongodb_uri = mongodb_uri
         self.hadoop_uri = hadoop_uri
         
-        # Conectar a MongoDB
         self.mongodb_client = MongoClient(mongodb_uri)
         self.db = self.mongodb_client.traffic_db
         self.raw_collection = self.db.waze_events
         self.processed_collection = self.db.processed_events
         self.analysis_collection = self.db.analysis_results
         
-        # Directorio para scripts Pig
         self.pig_scripts_dir = "/app/scripts"
         os.makedirs(self.pig_scripts_dir, exist_ok=True)
         
@@ -43,21 +40,17 @@ class PigDataProcessor:
         logger.info("Extrayendo datos de MongoDB a HDFS")
         
         try:
-            # Obtener eventos recientes
             cutoff_time = datetime.now() - timedelta(hours=24)
             cursor = self.raw_collection.find(
                 {'timestamp': {'$gte': cutoff_time}},
                 {'_id': 0}  # Excluir ObjectId
             )
             
-            # Convertir a lista y preparar para HDFS
             events = []
             for doc in cursor:
-                # Convertir timestamp a string
                 if 'timestamp' in doc:
                     doc['timestamp'] = doc['timestamp'].isoformat()
                 
-                # Limpiar datos nulos o problemáticos
                 cleaned_doc = self.clean_event_data(doc)
                 if cleaned_doc:
                     events.append(cleaned_doc)
@@ -68,15 +61,12 @@ class PigDataProcessor:
                 logger.warning("No hay eventos para procesar")
                 return ""
             
-            # Crear archivo temporal CSV
             temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
             
-            # Escribir header
             if events:
                 headers = list(events[0].keys())
                 temp_file.write(','.join(headers) + '\n')
                 
-                # Escribir datos
                 for event in events:
                     row = []
                     for header in headers:
@@ -90,7 +80,6 @@ class PigDataProcessor:
             
             temp_file.close()
             
-            # Subir a HDFS
             hdfs_path = f"/traffic_data/raw_events_{int(time.time())}.csv"
             hdfs_command = f"hdfs dfs -put {temp_file.name} {hdfs_path}"
             
@@ -98,7 +87,7 @@ class PigDataProcessor:
             
             if result.returncode == 0:
                 logger.info(f"Datos subidos a HDFS: {hdfs_path}")
-                os.unlink(temp_file.name)  # Limpiar archivo temporal
+                os.unlink(temp_file.name)  
                 return hdfs_path
             else:
                 logger.error(f"Error subiendo a HDFS: {result.stderr}")
@@ -113,19 +102,19 @@ class PigDataProcessor:
         """Limpia y valida datos de un evento"""
         
         try:
-            # Campos requeridos mínimos
+            
             required_fields = ['event_id', 'event_type', 'timestamp']
             
             for field in required_fields:
                 if field not in event or not event[field]:
                     return None
             
-            # Limpiar y estandarizar
+            
             cleaned = {
                 'event_id': str(event['event_id']),
                 'event_type': str(event.get('event_type', 'unknown')).lower(),
                 'subtype': str(event.get('subtype', '')).lower(),
-                'description': str(event.get('description', ''))[:500],  # Limitar longitud
+                'description': str(event.get('description', ''))[:500],  
                 'street': str(event.get('street', 'unknown'))[:200],
                 'city': str(event.get('city', 'unknown'))[:100],
                 'municipality': str(event.get('municipality', 'unknown'))[:100],
@@ -135,7 +124,7 @@ class PigDataProcessor:
                 'source': str(event.get('source', 'unknown'))
             }
             
-            # Procesar ubicación
+           
             location = event.get('location', {})
             if isinstance(location, dict):
                 cleaned['latitude'] = float(location.get('lat', 0))
@@ -144,12 +133,12 @@ class PigDataProcessor:
                 cleaned['latitude'] = 0.0
                 cleaned['longitude'] = 0.0
             
-            # Validar coordenadas para Región Metropolitana
+            
             if not (-34.0 <= cleaned['latitude'] <= -33.0 and -71.5 <= cleaned['longitude'] <= -70.0):
-                cleaned['latitude'] = -33.4489  # Santiago centro por defecto
+                cleaned['latitude'] = -33.4489  
                 cleaned['longitude'] = -70.6693
             
-            # Campos adicionales opcionales
+            
             cleaned['length'] = float(event.get('length', 0))
             cleaned['delay'] = float(event.get('delay', 0))
             cleaned['speed'] = float(event.get('speed', 0))
@@ -520,16 +509,16 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
         logger.info(f"Ejecutando script Pig: {script_path}")
         
         try:
-            # Comando para ejecutar Pig
+            
             pig_command = f"pig -f {script_path}"
             
-            # Ejecutar con timeout
+          
             result = subprocess.run(
                 pig_command,
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=1800  # 30 minutos timeout
+                timeout=1800  #
             )
             
             if result.returncode == 0:
@@ -554,11 +543,11 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
         logger.info(f"Descargando resultados desde HDFS: {hdfs_path}")
         
         try:
-            # Crear archivo temporal
+            
             temp_file = tempfile.NamedTemporaryFile(mode='w+', suffix='.csv', delete=False)
             temp_file.close()
             
-            # Descargar desde HDFS
+            
             hdfs_command = f"hdfs dfs -get {hdfs_path}/* {temp_file.name}"
             result = subprocess.run(hdfs_command, shell=True, capture_output=True, text=True)
             
@@ -567,7 +556,7 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
                 os.unlink(temp_file.name)
                 return []
             
-            # Leer resultados
+          
             results = []
             try:
                 with open(temp_file.name, 'r') as f:
@@ -621,7 +610,7 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
         }
         
         try:
-            # Etapa 1: Extraer datos a HDFS
+            
             logger.info("=== Etapa 1: Extracción a HDFS ===")
             hdfs_input_path = self.extract_data_to_hdfs()
             
@@ -634,7 +623,7 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
                 'hdfs_path': hdfs_input_path
             }
             
-            # Etapa 2: Filtrado y limpieza
+            
             logger.info("=== Etapa 2: Filtrado y limpieza ===")
             filtered_path = f"/traffic_data/filtered_{int(time.time())}"
             filtering_script = self.create_filtering_script(hdfs_input_path, filtered_path)
@@ -650,7 +639,7 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
                 pipeline_results['error'] = "Error en filtrado"
                 return pipeline_results
             
-            # Etapa 3: Análisis básico
+          
             logger.info("=== Etapa 3: Análisis básico ===")
             analysis_path = f"/traffic_data/analysis_{int(time.time())}"
             analysis_script = self.create_analysis_script(f"{filtered_path}/part-*", analysis_path)
@@ -663,9 +652,9 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
                 }
             else:
                 pipeline_results['stages']['analysis'] = {'success': False}
-                # Continuar con agregaciones aunque falle el análisis básico
+               
             
-            # Etapa 4: Agregaciones complejas
+           
             logger.info("=== Etapa 4: Agregaciones complejas ===")
             aggregation_path = f"/traffic_data/aggregation_{int(time.time())}"
             aggregation_script = self.create_aggregation_script(f"{filtered_path}/part-*", aggregation_path)
@@ -679,7 +668,6 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
             else:
                 pipeline_results['stages']['aggregation'] = {'success': False}
             
-            # Etapa 5: Descargar y guardar resultados
             logger.info("=== Etapa 5: Descarga y almacenamiento de resultados ===")
             self.download_and_store_results(analysis_path, aggregation_path)
             
@@ -699,7 +687,6 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
     def download_and_store_results(self, analysis_path: str, aggregation_path: str):
         """Descarga resultados de análisis y agregación desde HDFS"""
         
-        # Mapeo de análisis básicos
         basic_analyses = {
             'municipality_analysis': 'municipality',
             'event_type_analysis': 'event_type',
@@ -711,16 +698,14 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
             'critical_events_analysis': 'critical_events'
         }
         
-        # Descargar análisis básicos
         for analysis_name, analysis_key in basic_analyses.items():
             hdfs_analysis_path = f"{analysis_path}/{analysis_name}"
             results = self.download_results_from_hdfs(hdfs_analysis_path)
             
             if results:
-                # Convertir a formato dict
                 dict_results = []
                 for result in results:
-                    if len(result) > 1:  # Evitar líneas vacías
+                    if len(result) > 1:  
                         dict_results.append({
                             'data': result,
                             'analysis_type': analysis_key
@@ -728,7 +713,6 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
                 
                 self.save_analysis_results(f"basic_{analysis_key}", dict_results)
         
-        # Mapeo de agregaciones complejas
         complex_aggregations = {
             'event_municipality_matrix': 'event_municipality_correlation',
             'grid_density_analysis': 'geographic_density',
@@ -738,7 +722,7 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
             'traffic_hotspots': 'traffic_hotspots'
         }
         
-        # Descargar agregaciones complejas
+        
         for agg_name, agg_key in complex_aggregations.items():
             hdfs_agg_path = f"{aggregation_path}/{agg_name}"
             results = self.download_results_from_hdfs(hdfs_agg_path)
@@ -758,23 +742,18 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
         """Obtiene estadísticas del procesamiento"""
         
         try:
-            # Estadísticas de eventos raw
             total_raw_events = self.raw_collection.count_documents({})
             
-            # Estadísticas de eventos procesados
             total_processed_events = self.processed_collection.count_documents({})
             
-            # Estadísticas de análisis
             total_analysis_results = self.analysis_collection.count_documents({})
             
-            # Análisis recientes
             recent_cutoff = datetime.now() - timedelta(hours=24)
             recent_analyses = list(self.analysis_collection.find(
                 {'timestamp': {'$gte': recent_cutoff}},
                 {'analysis_type': 1, 'timestamp': 1, 'total_records': 1}
             ).sort('timestamp', -1).limit(10))
             
-            # Convertir ObjectId a string
             for analysis in recent_analyses:
                 analysis['_id'] = str(analysis['_id'])
                 analysis['timestamp'] = analysis['timestamp'].isoformat()
@@ -797,7 +776,6 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
         logger.info(f"Iniciando procesamiento incremental de últimas {hours_back} horas")
         
         try:
-            # Procesar eventos recientes
             cutoff_time = datetime.now() - timedelta(hours=hours_back)
             
             recent_events = list(self.raw_collection.find(
@@ -809,16 +787,13 @@ STORE hotspots_ranked INTO '{output_path}/traffic_hotspots' USING PigStorage(','
                 logger.info("No hay eventos recientes para procesar")
                 return {'processed_count': 0}
             
-            # Limpiar y procesar eventos
             processed_events = []
             for event in recent_events:
                 cleaned = self.clean_event_data(event)
                 if cleaned:
                     processed_events.append(cleaned)
             
-            # Guardar eventos procesados
             if processed_events:
-                # Usar upsert para evitar duplicados
                 for event in processed_events:
                     self.processed_collection.replace_one(
                         {'event_id': event['event_id']},
@@ -848,22 +823,18 @@ def main():
     
     processor = PigDataProcessor(mongodb_uri, hadoop_uri)
     
-    # Modo de operación
     mode = os.getenv('PROCESSING_MODE', 'full_pipeline')
     
     if mode == 'full_pipeline':
-        # Pipeline completo
         results = processor.run_complete_pipeline()
         logger.info(f"Resultados del pipeline: {json.dumps(results, default=str, indent=2)}")
         
     elif mode == 'incremental':
-        # Procesamiento incremental
         hours_back = int(os.getenv('INCREMENTAL_HOURS', '1'))
         results = processor.run_incremental_processing(hours_back)
         logger.info(f"Procesamiento incremental completado: {results}")
         
     elif mode == 'stats':
-        # Solo estadísticas
         stats = processor.get_processing_stats()
         logger.info(f"Estadísticas de procesamiento: {json.dumps(stats, indent=2)}")
         

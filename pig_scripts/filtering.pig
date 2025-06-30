@@ -1,10 +1,6 @@
--- Script Pig para filtrado y limpieza de eventos de tráfico
--- Autor: Sistema de Análisis de Tráfico RM
--- Fecha: 2025-06-29
--- Propósito: Filtrar, limpiar y estandarizar eventos de tráfico de la Región Metropolitana
 
--- Registrar funciones UDF personalizadas si es necesario
--- REGISTER '/app/udfs/traffic-udfs.jar';
+
+
 
 -- Definir parámetros de entrada
 %default INPUT_PATH '/traffic_data/raw_events.csv'

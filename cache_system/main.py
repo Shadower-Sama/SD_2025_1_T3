@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-"""
-Sistema de Caché para optimizar consultas de tráfico
-Implementa políticas LRU, LFU y FIFO
-"""
+
 
 import json
 import logging
@@ -18,7 +14,6 @@ from flask import Flask, request, jsonify
 from pymongo import MongoClient
 import hashlib
 
-# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -59,7 +54,6 @@ class LRUCache(CachePolicy):
     
     def get(self, key: str) -> Optional[Any]:
         if key in self.cache:
-            # Mover al final (más reciente)
             self.cache.move_to_end(key)
             self.hits += 1
             return self.cache[key]
@@ -69,10 +63,8 @@ class LRUCache(CachePolicy):
     
     def put(self, key: str, value: Any) -> None:
         if key in self.cache:
-            # Actualizar y mover al final
             self.cache.move_to_end(key)
         elif len(self.cache) >= self.capacity:
-            # Remover el menos recientemente usado (primero)
             self.cache.popitem(last=False)
         
         self.cache[key] = value
@@ -99,133 +91,6 @@ class LRUCache(CachePolicy):
             'miss_rate': 1 - hit_rate
         }
 
-class LFUCache(CachePolicy):
-    """Implementación de caché LFU (Least Frequently Used)"""
-    
-    def __init__(self, capacity: int):
-        self.capacity = capacity
-        self.cache = {}
-        self.frequencies = defaultdict(int)
-        self.freq_to_keys = defaultdict(set)
-        self.min_freq = 0
-        self.hits = 0
-        self.misses = 0
-    
-    def get(self, key: str) -> Optional[Any]:
-        if key in self.cache:
-            self._update_freq(key)
-            self.hits += 1
-            return self.cache[key]
-        
-        self.misses += 1
-        return None
-    
-    def put(self, key: str, value: Any) -> None:
-        if self.capacity <= 0:
-            return
-        
-        if key in self.cache:
-            self.cache[key] = value
-            self._update_freq(key)
-            return
-        
-        if len(self.cache) >= self.capacity:
-            self._evict()
-        
-        self.cache[key] = value
-        self.frequencies[key] = 1
-        self.freq_to_keys[1].add(key)
-        self.min_freq = 1
-    
-    def _update_freq(self, key: str) -> None:
-        freq = self.frequencies[key]
-        self.freq_to_keys[freq].remove(key)
-        
-        if freq == self.min_freq and not self.freq_to_keys[freq]:
-            self.min_freq += 1
-        
-        self.frequencies[key] += 1
-        self.freq_to_keys[self.frequencies[key]].add(key)
-    
-    def _evict(self) -> None:
-        key_to_remove = self.freq_to_keys[self.min_freq].pop()
-        del self.cache[key_to_remove]
-        del self.frequencies[key_to_remove]
-    
-    def size(self) -> int:
-        return len(self.cache)
-    
-    def clear(self) -> None:
-        self.cache.clear()
-        self.frequencies.clear()
-        self.freq_to_keys.clear()
-        self.min_freq = 0
-        self.hits = 0
-        self.misses = 0
-    
-    def stats(self) -> Dict:
-        total_requests = self.hits + self.misses
-        hit_rate = self.hits / total_requests if total_requests > 0 else 0
-        
-        return {
-            'policy': 'LFU',
-            'capacity': self.capacity,
-            'size': len(self.cache),
-            'hits': self.hits,
-            'misses': self.misses,
-            'hit_rate': hit_rate,
-            'miss_rate': 1 - hit_rate,
-            'min_frequency': self.min_freq
-        }
-
-class FIFOCache(CachePolicy):
-    """Implementación de caché FIFO (First In First Out)"""
-    
-    def __init__(self, capacity: int):
-        self.capacity = capacity
-        self.cache = OrderedDict()
-        self.hits = 0
-        self.misses = 0
-    
-    def get(self, key: str) -> Optional[Any]:
-        if key in self.cache:
-            self.hits += 1
-            return self.cache[key]
-        
-        self.misses += 1
-        return None
-    
-    def put(self, key: str, value: Any) -> None:
-        if key in self.cache:
-            # En FIFO, no movemos el elemento, solo actualizamos el valor
-            self.cache[key] = value
-        else:
-            if len(self.cache) >= self.capacity:
-                # Remover el primero (más antiguo)
-                self.cache.popitem(last=False)
-            self.cache[key] = value
-    
-    def size(self) -> int:
-        return len(self.cache)
-    
-    def clear(self) -> None:
-        self.cache.clear()
-        self.hits = 0
-        self.misses = 0
-    
-    def stats(self) -> Dict:
-        total_requests = self.hits + self.misses
-        hit_rate = self.hits / total_requests if total_requests > 0 else 0
-        
-        return {
-            'policy': 'FIFO',
-            'capacity': self.capacity,
-            'size': len(self.cache),
-            'hits': self.hits,
-            'misses': self.misses,
-            'hit_rate': hit_rate,
-            'miss_rate': 1 - hit_rate
-        }
 
 class TrafficCacheSystem:
     """Sistema de caché para consultas de tráfico"""
@@ -236,7 +101,6 @@ class TrafficCacheSystem:
         self.db = self.mongodb_client.traffic_db
         self.collection = self.db.waze_events
         
-        # Configurar política de caché
         self.cache_policy_name = cache_policy
         if cache_policy == 'LRU':
             self.cache = LRUCache(cache_size)
@@ -247,7 +111,6 @@ class TrafficCacheSystem:
         else:
             raise ValueError(f"Política de caché no soportada: {cache_policy}")
         
-        # Métricas adicionales
         self.query_times = []
         self.cache_times = []
         self.db_times = []
@@ -264,7 +127,6 @@ class TrafficCacheSystem:
         start_time = time.time()
         
         try:
-            # Construir filtros MongoDB
             mongo_filter = {}
             
             if 'municipality' in query:
@@ -285,31 +147,29 @@ class TrafficCacheSystem:
             if 'location' in query:
                 location = query['location']
                 if 'radius' in location and 'lat' in location and 'lng' in location:
-                    # Consulta geoespacial
                     mongo_filter['location'] = {
                         '$geoWithin': {
                             '$centerSphere': [
                                 [location['lng'], location['lat']],
-                                location['radius'] / 6371  # Radio en radianes
+                                location['radius'] / 6371  
                             ]
                         }
                     }
             
-            # Ejecutar consulta
+            
             cursor = self.collection.find(mongo_filter)
             
-            # Aplicar límites y ordenamiento
+            
             if 'limit' in query:
                 cursor = cursor.limit(query['limit'])
             else:
-                cursor = cursor.limit(1000)  # Límite por defecto
+                cursor = cursor.limit(1000)  
             
             cursor = cursor.sort('timestamp', -1)
             
-            # Convertir a lista y serializar
             results = []
             for doc in cursor:
-                doc['_id'] = str(doc['_id'])  # Convertir ObjectId a string
+                doc['_id'] = str(doc['_id'])  
                 if 'timestamp' in doc:
                     doc['timestamp'] = doc['timestamp'].isoformat()
                 results.append(doc)
@@ -331,16 +191,13 @@ class TrafficCacheSystem:
         """
         start_time = time.time()
         
-        # Generar clave de caché
         cache_key = self._generate_cache_key(query)
         
-        # Intentar obtener desde caché
         cache_start = time.time()
         cached_result = self.cache.get(cache_key)
         cache_time = time.time() - cache_start
         
         if cached_result is not None:
-            # Cache hit
             self.cache_times.append(cache_time)
             total_time = time.time() - start_time
             self.query_times.append(total_time)
@@ -356,17 +213,14 @@ class TrafficCacheSystem:
             logger.info(f"Cache HIT para consulta en {total_time:.3f}s")
             return cached_result, metrics
         
-        # Cache miss - consultar base de datos
         results = self._execute_db_query(query)
         
-        # Guardar en caché con TTL
         self.cache.put(cache_key, results)
         
-        # También guardar en Redis para persistencia
         try:
             self.redis_client.setex(
                 f"traffic_cache:{cache_key}",
-                3600,  # TTL de 1 hora
+                3600,  
                 json.dumps(results)
             )
         except Exception as e:
@@ -403,7 +257,6 @@ class TrafficCacheSystem:
         if cached_result is not None:
             return cached_result, {'cache_hit': True}
         
-        # Ejecutar agregación en MongoDB
         start_time = time.time()
         
         try:
@@ -448,17 +301,14 @@ class TrafficCacheSystem:
             else:
                 return [], {'error': f'Tipo de agregación no soportado: {aggregation_type}'}
             
-            # Ejecutar agregación
             results = list(self.collection.aggregate(pipeline))
             
-            # Serializar resultados
             for result in results:
                 if '_id' in result and hasattr(result['_id'], 'isoformat'):
                     result['_id'] = result['_id'].isoformat()
                 if 'last_event' in result and hasattr(result['last_event'], 'isoformat'):
                     result['last_event'] = result['last_event'].isoformat()
             
-            # Guardar en caché
             self.cache.put(cache_key, results)
             
             db_time = time.time() - start_time
@@ -531,10 +381,10 @@ class TrafficCacheSystem:
             }
         }
 
-# Flask API para el sistema de caché
+
 app = Flask(__name__)
 
-# Inicializar sistema de caché
+
 redis_uri = os.getenv('REDIS_URI', 'redis://localhost:6379')
 mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://admin:password123@localhost:27017/traffic_db?authSource=admin')
 cache_policy = os.getenv('CACHE_POLICY', 'LRU')

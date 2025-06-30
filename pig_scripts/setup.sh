@@ -1,12 +1,10 @@
 echo "Configurando directorio pig_scripts..."
 
-# Crear estructura de directorios
 mkdir -p logs
 mkdir -p output
 mkdir -p temp
 mkdir -p udfs
 
-# Crear archivo de configuración de Pig
 cat > pig.properties << EOF
 # Configuración de Apache Pig para Análisis de Tráfico
 # Generado automáticamente
@@ -36,7 +34,6 @@ traffic.rm.bounds.west=-71.5
 pig.exec.timeout=1800000
 EOF
 
-# Crear script de ejecución de pipeline completo
 cat > run_full_pipeline.sh << 'EOF'
 #!/bin/bash
 
@@ -80,7 +77,6 @@ EOF
 
 chmod +x run_full_pipeline.sh
 
-# Crear script de limpieza
 cat > cleanup.sh << 'EOF'
 #!/bin/bash
 
@@ -109,7 +105,6 @@ EOF
 
 chmod +x cleanup.sh
 
-# Crear archivo README para pig_scripts
 cat > README.md << 'EOF'
 # Scripts de Apache Pig para Análisis de Tráfico
 

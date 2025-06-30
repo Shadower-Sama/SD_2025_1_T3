@@ -9,7 +9,6 @@ from elasticsearch import Elasticsearch, helpers
 from pymongo import MongoClient
 import requests
 
-# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -24,14 +23,11 @@ class TrafficVisualizationSystem:
         self.mongodb_uri = mongodb_uri
         self.kibana_uri = kibana_uri or elasticsearch_uri.replace('9200', '5601')
         
-        # Conectar a Elasticsearch
         self.es = Elasticsearch([elasticsearch_uri])
         
-        # Conectar a MongoDB
         self.mongo_client = MongoClient(mongodb_uri)
         self.db = self.mongo_client.traffic_db
         
-        # Índices de Elasticsearch
         self.events_index = 'traffic-events'
         self.analysis_index = 'traffic-analysis'
         self.cache_metrics_index = 'cache-metrics'
@@ -41,7 +37,6 @@ class TrafficVisualizationSystem:
     def create_elasticsearch_indices(self):
         """Crea los índices necesarios en Elasticsearch"""
         
-        # Mapping para eventos de tráfico
         events_mapping = {
             "mappings": {
                 "properties": {
@@ -74,7 +69,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Mapping para resultados de análisis
         analysis_mapping = {
             "mappings": {
                 "properties": {
@@ -94,7 +88,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Mapping para métricas de caché
         cache_mapping = {
             "mappings": {
                 "properties": {
@@ -113,7 +106,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Crear índices
         indices = [
             (self.events_index, events_mapping),
             (self.analysis_index, analysis_mapping),
@@ -136,18 +128,16 @@ class TrafficVisualizationSystem:
         logger.info(f"Sincronizando eventos a Elasticsearch (límite: {limit})")
         
         try:
-            # Obtener eventos recientes de MongoDB
-            cutoff_time = datetime.now() - timedelta(days=7)  # Última semana
+            cutoff_time = datetime.now() - timedelta(days=7) 
             
             cursor = self.db.waze_events.find(
                 {'timestamp': {'$gte': cutoff_time}},
                 {'_id': 0}
             ).sort('timestamp', -1).limit(limit)
             
-            # Preparar documentos para bulk insert
             docs = []
             for event in cursor:
-                # Transformar para Elasticsearch
+                
                 es_doc = self.transform_event_for_es(event)
                 if es_doc:
                     docs.append({
@@ -157,7 +147,7 @@ class TrafficVisualizationSystem:
                     })
             
             if docs:
-                # Bulk insert
+                
                 helpers.bulk(self.es, docs, chunk_size=1000, request_timeout=60)
                 logger.info(f"Sincronizados {len(docs)} eventos a Elasticsearch")
             else:
@@ -173,7 +163,7 @@ class TrafficVisualizationSystem:
         """Transforma un evento de MongoDB para Elasticsearch"""
         
         try:
-            # Procesar ubicación
+           
             location = event.get('location', {})
             if isinstance(location, dict) and 'lat' in location and 'lng' in location:
                 geo_point = {
@@ -183,7 +173,7 @@ class TrafficVisualizationSystem:
             else:
                 geo_point = None
             
-            # Procesar timestamp
+            
             timestamp = event.get('timestamp')
             if isinstance(timestamp, str):
                 timestamp = timestamp
@@ -227,7 +217,7 @@ class TrafficVisualizationSystem:
         logger.info("Sincronizando resultados de análisis a Elasticsearch")
         
         try:
-            # Obtener análisis recientes
+            
             cutoff_time = datetime.now() - timedelta(days=1)
             
             cursor = self.db.analysis_results.find(
@@ -237,7 +227,7 @@ class TrafficVisualizationSystem:
             
             docs = []
             for analysis in cursor:
-                # Procesar cada resultado dentro del análisis
+                
                 analysis_type = analysis.get('analysis_type', 'unknown')
                 timestamp = analysis.get('timestamp', datetime.now())
                 
@@ -269,13 +259,13 @@ class TrafficVisualizationSystem:
         """Transforma un resultado de análisis para Elasticsearch"""
         
         try:
-            # Estructura base
+           
             es_doc = {
                 'analysis_type': analysis_type,
                 'timestamp': timestamp
             }
             
-            # Procesar según tipo de análisis
+            
             data = result.get('data', [])
             if not data:
                 return None
@@ -320,7 +310,7 @@ class TrafficVisualizationSystem:
                     })
                     
             else:
-                # Análisis genérico
+                
                 es_doc.update({
                     'analysis_subtype': 'generic',
                     'metric_name': analysis_type,
@@ -338,7 +328,7 @@ class TrafficVisualizationSystem:
         
         logger.info("Creando dashboards en Kibana")
         
-        # Dashboard principal de tráfico
+        
         traffic_dashboard = {
             "version": "8.8.0",
             "objects": [
@@ -374,7 +364,7 @@ class TrafficVisualizationSystem:
             ]
         }
         
-        # Visualización de eventos por municipio
+       
         municipality_viz = {
             "id": "events-by-municipality",
             "type": "visualization",
@@ -455,7 +445,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Mapa de eventos
         events_map = {
             "id": "traffic-events-map",
             "type": "visualization",
@@ -517,7 +506,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Timeline de eventos
         events_timeline = {
             "id": "events-timeline",
             "type": "visualization",
@@ -600,7 +588,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Métricas de caché
         cache_dashboard = {
             "id": "cache-performance-dashboard",
             "type": "dashboard",
@@ -627,7 +614,6 @@ class TrafficVisualizationSystem:
             }
         }
         
-        # Intentar crear dashboards via API de Kibana
         kibana_objects = [
             traffic_dashboard,
             municipality_viz,
@@ -677,13 +663,11 @@ class TrafficVisualizationSystem:
         """Sincroniza métricas del sistema de caché"""
         
         try:
-            # Obtener estadísticas del caché
             response = requests.get(f"{cache_uri}/cache/stats", timeout=10)
             
             if response.status_code == 200:
                 stats = response.json()
                 
-                # Transformar para Elasticsearch
                 es_doc = {
                     'timestamp': datetime.now().isoformat(),
                     'cache_policy': stats.get('policy', 'unknown'),
@@ -695,7 +679,6 @@ class TrafficVisualizationSystem:
                     'capacity': stats.get('capacity', 0)
                 }
                 
-                # Agregar métricas de rendimiento si están disponibles
                 performance = stats.get('performance', {})
                 if performance:
                     es_doc.update({
@@ -704,7 +687,6 @@ class TrafficVisualizationSystem:
                         'avg_db_time': performance.get('avg_db_time', 0)
                     })
                 
-                # Indexar en Elasticsearch
                 self.es.index(
                     index=self.cache_metrics_index,
                     document=es_doc
@@ -778,28 +760,22 @@ class TrafficVisualizationSystem:
         }
         
         try:
-            # 1. Crear índices
             self.create_elasticsearch_indices()
             results['operations']['indices_created'] = True
             
-            # 2. Sincronizar eventos
             events_synced = self.sync_events_to_elasticsearch()
             results['operations']['events_synced'] = events_synced
             
-            # 3. Sincronizar análisis
             analysis_synced = self.sync_analysis_results_to_elasticsearch()
             results['operations']['analysis_synced'] = analysis_synced
             
-            # 4. Sincronizar métricas de caché
             if cache_uri:
                 cache_synced = self.sync_cache_metrics(cache_uri)
                 results['operations']['cache_metrics_synced'] = cache_synced
             
-            # 5. Crear patrones de índice
             patterns_created = self.create_index_patterns()
             results['operations']['index_patterns_created'] = patterns_created
             
-            # 6. Crear dashboards
             dashboards_created = self.create_kibana_dashboards()
             results['operations']['dashboards_created'] = dashboards_created
             
@@ -823,7 +799,6 @@ class TrafficVisualizationSystem:
         try:
             stats = {}
             
-            # Estadísticas de Elasticsearch
             for index in [self.events_index, self.analysis_index, self.cache_metrics_index]:
                 try:
                     if self.es.indices.exists(index=index):
@@ -834,7 +809,6 @@ class TrafficVisualizationSystem:
                 except:
                     stats[f"{index}_documents"] = 0
             
-            # Salud del cluster
             try:
                 cluster_health = self.es.cluster.health()
                 stats['elasticsearch_status'] = cluster_health['status']
@@ -842,7 +816,6 @@ class TrafficVisualizationSystem:
             except:
                 stats['elasticsearch_status'] = 'unknown'
             
-            # Estadísticas de MongoDB
             try:
                 mongodb_stats = {
                     'raw_events': self.db.waze_events.count_documents({}),
@@ -867,7 +840,6 @@ def main():
     mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://admin:password123@localhost:27017/traffic_db?authSource=admin')
     cache_uri = os.getenv('CACHE_URI', 'http://localhost:8080')
     
-    # Esperar a que Elasticsearch esté disponible
     logger.info("Esperando que Elasticsearch esté disponible...")
     for attempt in range(30):
         try:
@@ -884,25 +856,20 @@ def main():
         logger.error("Elasticsearch no disponible después de 5 minutos")
         return
     
-    # Crear sistema de visualización
     viz_system = TrafficVisualizationSystem(elasticsearch_uri, mongodb_uri)
     
-    # Modo de operación
     mode = os.getenv('VISUALIZATION_MODE', 'full_sync')
     
     if mode == 'full_sync':
-        # Sincronización completa
         results = viz_system.run_full_sync(cache_uri)
         logger.info(f"Resultados de sincronización: {json.dumps(results, default=str, indent=2)}")
         
     elif mode == 'events_only':
-        # Solo sincronizar eventos
         viz_system.create_elasticsearch_indices()
         events_synced = viz_system.sync_events_to_elasticsearch()
         logger.info(f"Eventos sincronizados: {events_synced}")
         
     elif mode == 'continuous':
-        # Modo continuo
         logger.info("Iniciando sincronización continua")
         while True:
             try:
@@ -911,7 +878,7 @@ def main():
                 viz_system.sync_cache_metrics(cache_uri)
                 
                 logger.info("Ciclo de sincronización completado")
-                time.sleep(300)  # 5 minutos
+                time.sleep(300) 
                 
             except KeyboardInterrupt:
                 logger.info("Sincronización continua interrumpida")
@@ -921,7 +888,7 @@ def main():
                 time.sleep(60)
                 
     elif mode == 'stats':
-        # Solo mostrar estadísticas
+        
         stats = viz_system.get_visualization_stats()
         logger.info(f"Estadísticas de visualización: {json.dumps(stats, indent=2)}")
         

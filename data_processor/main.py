@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Data Processor - Módulo de Filtrado y Homogeneización
-Procesa eventos raw de Waze para limpiar, estandarizar y preparar datos
-"""
 
 import asyncio
 import json
@@ -16,7 +11,6 @@ import pandas as pd
 from pymongo import MongoClient
 import numpy as np
 
-# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -31,7 +25,6 @@ class DataProcessor:
         self.processing_interval = processing_interval
         self.batch_size = batch_size
         
-        # Conectar a MongoDB
         self.mongodb_client = MongoClient(mongodb_uri)
         self.db = self.mongodb_client.traffic_db
         self.raw_collection = self.db.waze_events
@@ -39,10 +32,8 @@ class DataProcessor:
         self.duplicate_collection = self.db.duplicate_events
         self.invalid_collection = self.db.invalid_events
         
-        # Crear índices optimizados
         self.create_indices()
         
-        # Configuración de filtros
         self.rm_bounds = {
             'north': -33.0,
             'south': -34.0,
@@ -50,10 +41,8 @@ class DataProcessor:
             'west': -71.5
         }
         
-        # Mapeo de municipios
         self.municipality_mapping = self.load_municipality_mapping()
         
-        # Estadísticas de procesamiento
         self.stats = {
             'processed_count': 0,
             'duplicate_count': 0,
@@ -67,7 +56,6 @@ class DataProcessor:
     def create_indices(self):
         """Crea índices optimizados para las colecciones"""
         try:
-            # Índices para eventos raw
             self.raw_collection.create_index([("event_id", 1)], unique=False)
             self.raw_collection.create_index([("timestamp", -1)])
             self.raw_collection.create_index([("processed", 1)])
@@ -174,21 +162,17 @@ class DataProcessor:
                 return self.get_municipality_from_coordinates(lat, lng)
             return 'Desconocido'
         
-        # Limpiar y normalizar
         municipality_clean = municipality.lower().strip()
         
-        # Buscar en mapeo
         for key, data in self.municipality_mapping.items():
             if municipality_clean in data['aliases']:
                 return data['canonical']
         
-        # Si no se encuentra, intentar con coordenadas
         if lat and lng and self.is_valid_coordinate(lat, lng):
             coord_municipality = self.get_municipality_from_coordinates(lat, lng)
             if coord_municipality != 'Región Metropolitana':
                 return coord_municipality
         
-        # Capitalizar primera letra de cada palabra
         return municipality.title() if municipality else 'Desconocido'
     
     def get_municipality_from_coordinates(self, lat: float, lng: float) -> str:
@@ -211,7 +195,6 @@ class DataProcessor:
         
         event_type_clean = event_type.lower().strip()
         
-        # Mapeo de tipos de eventos
         type_mapping = {
             'jam': 'jam',
             'traffic_jam': 'jam',
@@ -238,11 +221,9 @@ class DataProcessor:
             'carabineros': 'police'
         }
         
-        # Buscar mapeo directo
         if event_type_clean in type_mapping:
             return type_mapping[event_type_clean]
         
-        # Buscar en subtype si no se encuentra en type
         if subtype:
             subtype_clean = subtype.lower().strip()
             if subtype_clean in type_mapping:
@@ -255,10 +236,8 @@ class DataProcessor:
         if not description:
             return ''
         
-        # Eliminar caracteres especiales y normalizar
         cleaned = description.strip()
         
-        # Limitar longitud
         if len(cleaned) > 500:
             cleaned = cleaned[:497] + '...'
         
@@ -267,14 +246,12 @@ class DataProcessor:
     def validate_event(self, event: Dict) -> tuple[bool, str]:
         """Valida si un evento es procesable"""
         
-        # Campos requeridos
         if not event.get('event_id'):
             return False, "event_id faltante"
         
         if not event.get('timestamp'):
             return False, "timestamp faltante"
         
-        # Validar timestamp
         try:
             if isinstance(event['timestamp'], str):
                 datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00'))
@@ -283,7 +260,6 @@ class DataProcessor:
         except:
             return False, "formato de timestamp inválido"
         
-        # Validar coordenadas si existen
         location = event.get('location', {})
         if location:
             lat = location.get('lat')
@@ -294,14 +270,12 @@ class DataProcessor:
                     lat_float = float(lat)
                     lng_float = float(lng)
                     
-                    # Coordenadas deben estar en un rango razonable
                     if not (-90 <= lat_float <= 90 and -180 <= lng_float <= 180):
                         return False, "coordenadas fuera de rango"
                         
                 except (ValueError, TypeError):
                     return False, "coordenadas inválidas"
         
-        # Validar campos numéricos
         numeric_fields = ['confidence', 'severity', 'level', 'num_thumbs_up']
         for field in numeric_fields:
             value = event.get(field)
@@ -318,14 +292,12 @@ class DataProcessor:
     def process_single_event(self, event: Dict) -> Optional[Dict]:
         """Procesa un evento individual"""
         
-        # Validar evento
         is_valid, reason = self.validate_event(event)
         if not is_valid:
             logger.debug(f"Evento inválido {event.get('event_id', 'unknown')}: {reason}")
             return None
         
         try:
-            # Extraer y limpiar ubicación
             location = event.get('location', {})
             lat = None
             lng = None
@@ -337,7 +309,6 @@ class DataProcessor:
                 except (ValueError, TypeError):
                     lat = lng = None
             
-            # Crear evento procesado
             processed_event = {
                 'event_id': str(event['event_id']),
                 'original_event_type': event.get('event_type', ''),
@@ -366,24 +337,19 @@ class DataProcessor:
                 'data_quality_score': 0.0
             }
             
-            # Procesar ubicación
             if lat is not None and lng is not None:
                 if self.is_valid_coordinate(lat, lng):
                     processed_event['location'] = {'lat': lat, 'lng': lng}
                     processed_event['coordinates_valid'] = True
                 else:
-                    # Coordenadas fuera de RM, usar coordenadas por defecto
                     processed_event['location'] = {'lat': -33.4489, 'lng': -70.6693}
                     processed_event['coordinates_valid'] = False
             else:
-                # Sin coordenadas, usar centro de Santiago
                 processed_event['location'] = {'lat': -33.4489, 'lng': -70.6693}
                 processed_event['coordinates_valid'] = False
             
-            # Calcular score de calidad
             processed_event['data_quality_score'] = self.calculate_quality_score(processed_event)
             
-            # Agregar metadatos de procesamiento
             processed_event['processing_metadata'] = {
                 'processed_at': datetime.now(),
                 'processor_version': '1.0',
@@ -402,7 +368,6 @@ class DataProcessor:
         score = 0.0
         max_score = 0.0
         
-        # Completitud de datos (40% del score)
         completeness_score = 0.0
         completeness_fields = [
             ('description', 0.1),
@@ -421,13 +386,11 @@ class DataProcessor:
         
         score += completeness_score
         
-        # Confiabilidad (30% del score)
         confidence = event.get('confidence', 0) / 10.0
         confidence_weight = 0.3
         score += confidence * confidence_weight
         max_score += confidence_weight
         
-        # Validación de source (20% del score)
         source = event.get('source', '')
         source_weight = 0.2
         if source in ['waze_api', 'waze_web']:
@@ -436,7 +399,6 @@ class DataProcessor:
             score += source_weight * 0.5
         max_score += source_weight
         
-        # Engagement (10% del score)
         thumbs_up = min(event.get('num_thumbs_up', 0), 10) / 10.0
         engagement_weight = 0.1
         score += thumbs_up * engagement_weight
@@ -451,39 +413,33 @@ class DataProcessor:
         duplicates = []
         seen_ids = set()
         
-        # Agrupar por criterios de similaridad
         similarity_groups = {}
         
         for event in events:
             event_id = event['event_id']
             
-            # Duplicado exacto por ID
             if event_id in seen_ids:
                 duplicates.append(event)
                 continue
             
-            # Crear clave de similaridad
             location = event.get('location', {})
             similarity_key = (
                 event.get('municipality', ''),
                 event.get('event_type', ''),
-                round(location.get('lat', 0), 3),  # Redondear a ~100m
+                round(location.get('lat', 0), 3),  
                 round(location.get('lng', 0), 3),
                 event['timestamp'].date() if isinstance(event['timestamp'], datetime) else str(event['timestamp'])[:10]
             )
             
             if similarity_key in similarity_groups:
-                # Evento similar encontrado, comparar calidad
                 existing_event = similarity_groups[similarity_key]
                 existing_quality = existing_event.get('data_quality_score', 0)
                 current_quality = event.get('data_quality_score', 0)
                 
                 if current_quality > existing_quality:
-                    # Evento actual es mejor, reemplazar
                     duplicates.append(existing_event)
                     similarity_groups[similarity_key] = event
                 else:
-                    # Evento existente es mejor, marcar actual como duplicado
                     duplicates.append(event)
             else:
                 similarity_groups[similarity_key] = event
@@ -501,7 +457,6 @@ class DataProcessor:
         
         limit = limit or self.batch_size
         
-        # Obtener eventos sin procesar
         query = {'processed': {'$ne': True}}
         cursor = self.raw_collection.find(query).limit(limit).sort('timestamp', 1)
         
@@ -518,7 +473,6 @@ class DataProcessor:
         
         logger.info(f"Procesando lote de {len(raw_events)} eventos")
         
-        # Procesar eventos
         processed_events = []
         invalid_events = []
         
@@ -529,10 +483,8 @@ class DataProcessor:
             else:
                 invalid_events.append(raw_event)
         
-        # Detectar duplicados
         unique_events, duplicate_events = self.detect_duplicates(processed_events)
         
-        # Guardar resultados
         results = {
             'processed': 0,
             'duplicates': 0,
@@ -540,7 +492,6 @@ class DataProcessor:
             'batch_size': len(raw_events)
         }
         
-        # Insertar eventos únicos
         if unique_events:
             try:
                 self.processed_collection.insert_many(unique_events, ordered=False)
@@ -549,7 +500,6 @@ class DataProcessor:
             except Exception as e:
                 logger.error(f"Error insertando eventos procesados: {e}")
         
-        # Guardar duplicados
         if duplicate_events:
             try:
                 for dup in duplicate_events:
@@ -560,7 +510,6 @@ class DataProcessor:
             except Exception as e:
                 logger.error(f"Error guardando duplicados: {e}")
         
-        # Guardar eventos inválidos
         if invalid_events:
             try:
                 for inv in invalid_events:
@@ -571,14 +520,12 @@ class DataProcessor:
             except Exception as e:
                 logger.error(f"Error guardando eventos inválidos: {e}")
         
-        # Marcar eventos como procesados
         event_ids = [event['event_id'] for event in raw_events]
         self.raw_collection.update_many(
             {'event_id': {'$in': event_ids}},
             {'$set': {'processed': True, 'processed_at': datetime.now()}}
         )
         
-        # Actualizar estadísticas
         self.stats['processed_count'] += results['processed']
         self.stats['duplicate_count'] += results['duplicates']
         self.stats['invalid_count'] += results['invalid']
@@ -592,7 +539,6 @@ class DataProcessor:
         """Obtiene estadísticas de procesamiento"""
         
         try:
-            # Estadísticas de colecciones
             collection_stats = {
                 'raw_events': self.raw_collection.count_documents({}),
                 'processed_events': self.processed_collection.count_documents({}),
@@ -601,7 +547,6 @@ class DataProcessor:
                 'unprocessed_events': self.raw_collection.count_documents({'processed': {'$ne': True}})
             }
             
-            # Estadísticas de calidad
             pipeline = [
                 {'$group': {
                     '_id': None,
@@ -614,7 +559,6 @@ class DataProcessor:
             quality_stats = list(self.processed_collection.aggregate(pipeline))
             quality_data = quality_stats[0] if quality_stats else {}
             
-            # Estadísticas por municipio
             municipality_pipeline = [
                 {'$group': {
                     '_id': '$municipality',
@@ -658,12 +602,10 @@ class DataProcessor:
         cutoff_date = datetime.now() - timedelta(days=days_to_keep)
         
         try:
-            # Limpiar eventos duplicados antiguos
             dup_result = self.duplicate_collection.delete_many(
                 {'duplicate_detected_at': {'$lt': cutoff_date}}
             )
             
-            # Limpiar eventos inválidos antiguos
             inv_result = self.invalid_collection.delete_many(
                 {'invalid_detected_at': {'$lt': cutoff_date}}
             )
@@ -683,23 +625,23 @@ class DataProcessor:
             try:
                 start_time = time.time()
                 
-                # Procesar lote
+                
                 results = self.process_batch()
                 
-                # Log de resultados
+                
                 processing_time = time.time() - start_time
                 logger.info(f"Procesamiento completado en {processing_time:.2f}s: {results}")
                 
-                # Limpieza periódica (cada hora)
+                
                 if self.stats['processed_count'] % 100 == 0:
                     self.cleanup_old_data()
                 
-                # Esperar hasta el próximo ciclo
+                
                 await asyncio.sleep(self.processing_interval)
                 
             except Exception as e:
                 logger.error(f"Error en procesamiento continuo: {e}")
-                await asyncio.sleep(60)  # Esperar 1 minuto antes de reintentar
+                await asyncio.sleep(60)  
     
     def run_single_batch(self, limit: int = None):
         """Ejecuta un solo lote de procesamiento"""
@@ -749,38 +691,30 @@ class DataProcessor:
 def main():
     """Función principal del procesador de datos"""
     
-    # Configuración desde variables de entorno
     mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://admin:password123@localhost:27017/traffic_db?authSource=admin')
     processing_interval = int(os.getenv('PROCESSING_INTERVAL', '600'))  # 10 minutos por defecto
     batch_size = int(os.getenv('BATCH_SIZE', '1000'))
     mode = os.getenv('PROCESSING_MODE', 'continuous')
     
-    # Crear procesador
     processor = DataProcessor(mongodb_uri, processing_interval, batch_size)
     
-    # Ejecutar según modo
     if mode == 'continuous':
-        # Procesamiento continuo
         logger.info("Modo continuo activado")
         asyncio.run(processor.run_continuous_processing())
         
     elif mode == 'single_batch':
-        # Un solo lote
         limit = int(os.getenv('BATCH_LIMIT', '0')) or None
         results = processor.run_single_batch(limit)
         print(json.dumps(results, indent=2))
         
     elif mode == 'reprocess':
-        # Reprocesar eventos fallidos
         processor.reprocess_failed_events()
         
     elif mode == 'stats':
-        # Mostrar estadísticas
         stats = processor.get_processing_stats()
         print(json.dumps(stats, indent=2, default=str))
         
     elif mode == 'cleanup':
-        # Limpieza de datos
         days = int(os.getenv('CLEANUP_DAYS', '30'))
         processor.cleanup_old_data(days)
         

@@ -1,7 +1,4 @@
--- Script Pig para análisis de eventos de tráfico
--- Genera métricas y agregaciones para la toma de decisiones
--- Autor: Sistema de Análisis de Tráfico RM
--- Fecha: 2025-06-29
+
 
 -- Definir parámetros
 %default INPUT_PATH '/traffic_data/filtered_events'

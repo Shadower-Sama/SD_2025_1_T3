@@ -11,7 +11,7 @@ import aiohttp
 import numpy as np
 from pymongo import MongoClient
 
-# Configuración de logging
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -27,12 +27,12 @@ class TrafficGenerator:
         self.poisson_lambda = poisson_lambda
         self.exponential_lambda = exponential_lambda
         
-        # Conectar a MongoDB para obtener datos reales
+   
         self.mongodb_client = MongoClient(mongodb_uri)
         self.db = self.mongodb_client.traffic_db
         self.collection = self.db.waze_events
         
-        # Estadísticas del generador
+      
         self.requests_sent = 0
         self.responses_received = 0
         self.errors = 0
@@ -46,7 +46,7 @@ class TrafficGenerator:
     def _define_query_patterns(self) -> List[Dict]:
         """Define patrones de consulta realistas"""
         
-        # Obtener municipios reales de la base de datos
+        
         try:
             municipalities = list(self.collection.distinct('municipality'))
             if not municipalities:
@@ -57,54 +57,54 @@ class TrafficGenerator:
         event_types = ['alert', 'jam', 'accident', 'road_closure', 'hazard']
         
         patterns = [
-            # Consultas por municipio (muy comunes)
+            
             {
                 'type': 'municipality_query',
                 'weight': 0.3,
                 'template': {
-                    'municipality': None,  # Se llenará dinámicamente
+                    'municipality': None,  
                     'limit': 100
                 }
             },
             
-            # Consultas por tipo de evento
+            
             {
                 'type': 'event_type_query',
                 'weight': 0.2,
                 'template': {
-                    'event_type': None,  # Se llenará dinámicamente
+                    'event_type': None,  
                     'limit': 50
                 }
             },
             
-            # Consultas por rango de tiempo (última hora, último día)
+          
             {
                 'type': 'recent_events',
                 'weight': 0.25,
                 'template': {
                     'date_range': {
-                        'start': None,  # Se calculará dinámicamente
+                        'start': None,  
                         'end': None
                     },
                     'limit': 200
                 }
             },
             
-            # Consultas geoespaciales
+         
             {
                 'type': 'location_query',
                 'weight': 0.15,
                 'template': {
                     'location': {
-                        'lat': -33.4489,  # Santiago centro
+                        'lat': -33.4489,  
                         'lng': -70.6693,
-                        'radius': 5  # 5 km
+                        'radius': 5  
                     },
                     'limit': 150
                 }
             },
             
-            # Consultas combinadas (municipio + tipo)
+        
             {
                 'type': 'combined_query',
                 'weight': 0.1,
@@ -124,11 +124,11 @@ class TrafficGenerator:
     def generate_query(self) -> Dict:
         """Genera una consulta basada en los patrones definidos"""
         
-        # Seleccionar patrón basado en pesos
+       
         weights = [pattern['weight'] for pattern in self.query_patterns]
         pattern = np.random.choice(self.query_patterns, p=weights)
         
-        # Crear consulta basada en el patrón
+     
         query = pattern['template'].copy()
         
         if pattern['type'] == 'municipality_query':
@@ -138,9 +138,8 @@ class TrafficGenerator:
             query['event_type'] = random.choice(self.event_types)
             
         elif pattern['type'] == 'recent_events':
-            # Generar rango de tiempo reciente
             end_time = datetime.now()
-            hours_back = random.choice([1, 6, 12, 24, 48])  # Diferentes ventanas de tiempo
+            hours_back = random.choice([1, 6, 12, 24, 48]) 
             start_time = end_time - timedelta(hours=hours_back)
             
             query['date_range'] = {
@@ -149,7 +148,6 @@ class TrafficGenerator:
             }
             
         elif pattern['type'] == 'location_query':
-            # Variar la ubicación y radio
             lat_offset = random.uniform(-0.1, 0.1)
             lng_offset = random.uniform(-0.1, 0.1)
             
@@ -266,7 +264,6 @@ class TrafficGenerator:
         current_time = 0
         
         while current_time < duration_seconds:
-            # Tiempo entre llegadas sigue distribución exponencial
             inter_arrival_time = np.random.exponential(1.0 / self.poisson_lambda)
             current_time += inter_arrival_time
             
@@ -305,14 +302,12 @@ class TrafficGenerator:
         
         async with aiohttp.ClientSession() as session:
             for arrival_time in arrival_times:
-                # Esperar hasta el tiempo de llegada
                 elapsed = time.time() - start_time
                 wait_time = arrival_time - elapsed
                 
                 if wait_time > 0:
                     await asyncio.sleep(wait_time)
                 
-                # Decidir tipo de consulta (80% normales, 20% agregaciones)
                 if random.random() < 0.8:
                     query = self.generate_query()
                     result = await self.send_query(session, query)
@@ -322,7 +317,6 @@ class TrafficGenerator:
                 
                 results.append(result)
                 
-                # Log progreso cada 50 consultas
                 if len(results) % 50 == 0:
                     cache_hits = sum(1 for r in results if r.get('cache_hit', False))
                     hit_rate = cache_hits / len(results) if results else 0
@@ -346,14 +340,12 @@ class TrafficGenerator:
         
         async with aiohttp.ClientSession() as session:
             for arrival_time in arrival_times:
-                # Esperar hasta el tiempo de llegada
                 elapsed = time.time() - start_time
                 wait_time = arrival_time - elapsed
                 
                 if wait_time > 0:
                     await asyncio.sleep(wait_time)
                 
-                # Decidir tipo de consulta
                 if random.random() < 0.8:
                     query = self.generate_query()
                     result = await self.send_query(session, query)
@@ -363,7 +355,6 @@ class TrafficGenerator:
                 
                 results.append(result)
                 
-                # Log progreso
                 if len(results) % 50 == 0:
                     cache_hits = sum(1 for r in results if r.get('cache_hit', False))
                     hit_rate = cache_hits / len(results) if results else 0
@@ -383,7 +374,6 @@ class TrafficGenerator:
             for burst_num in range(num_bursts):
                 logger.info(f"Ejecutando ráfaga {burst_num + 1}/{num_bursts}")
                 
-                # Ejecutar consultas de la ráfaga concurrentemente
                 burst_tasks = []
                 
                 for _ in range(burst_size):
@@ -396,10 +386,8 @@ class TrafficGenerator:
                     
                     burst_tasks.append(task)
                 
-                # Ejecutar todas las consultas de la ráfaga
                 burst_results = await asyncio.gather(*burst_tasks, return_exceptions=True)
                 
-                # Filtrar resultados válidos
                 valid_results = [r for r in burst_results if isinstance(r, dict)]
                 all_results.extend(valid_results)
                 
@@ -409,7 +397,6 @@ class TrafficGenerator:
                 
                 logger.info(f"Ráfaga {burst_num + 1} completada: {len(valid_results)} consultas, Hit rate: {hit_rate:.2%}, Tiempo promedio: {avg_response_time:.3f}s")
                 
-                # Esperar antes de la siguiente ráfaga (excepto en la última)
                 if burst_num < num_bursts - 1:
                     await asyncio.sleep(burst_interval)
         
@@ -466,7 +453,6 @@ class TrafficGenerator:
             }
         }
         
-        # Calcular speedup del caché
         if cache_hit_times and cache_miss_times:
             analysis['cache_speedup'] = {
                 'mean_speedup': float(np.mean(cache_miss_times) / np.mean(cache_hit_times)),
@@ -480,7 +466,6 @@ class TrafficGenerator:
         
         logger.info("Iniciando pruebas comparativas de distribuciones")
         
-        # Limpiar caché antes de empezar
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{self.cache_uri}/cache/clear") as response:
@@ -491,28 +476,22 @@ class TrafficGenerator:
         
         results = {}
         
-        # Prueba con distribución Poisson
         logger.info("=== Iniciando prueba con distribución Poisson ===")
         self.reset_stats()
         results['poisson'] = await self.run_poisson_traffic(duration_minutes)
         
-        # Esperar un poco entre pruebas
         await asyncio.sleep(10)
         
-        # Prueba con distribución Exponencial
         logger.info("=== Iniciando prueba con distribución Exponencial ===")
         self.reset_stats()
         results['exponential'] = await self.run_exponential_traffic(duration_minutes)
         
-        # Esperar un poco entre pruebas
         await asyncio.sleep(10)
         
-        # Prueba con tráfico en ráfagas
         logger.info("=== Iniciando prueba con tráfico en ráfagas ===")
         self.reset_stats()
         results['burst'] = await self.run_burst_traffic()
         
-        # Obtener estadísticas finales del caché
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.cache_uri}/cache/stats") as response:
@@ -551,20 +530,16 @@ class TrafficGenerator:
         
         async with aiohttp.ClientSession() as session:
             while time.time() < end_time:
-                # Alternar entre distribuciones cada 10 minutos
                 current_minute = int((time.time() - (end_time - hours * 3600)) / 60)
                 use_poisson = (current_minute // 10) % 2 == 0
                 
                 if use_poisson:
-                    # Usar llegada Poisson
                     wait_time = np.random.exponential(1.0 / self.poisson_lambda)
                 else:
-                    # Usar llegada Exponencial
                     wait_time = np.random.exponential(1.0 / self.exponential_lambda)
                 
                 await asyncio.sleep(wait_time)
                 
-                # Generar y enviar consulta
                 if random.random() < 0.8:
                     query = self.generate_query()
                     result = await self.send_query(session, query)
@@ -574,7 +549,6 @@ class TrafficGenerator:
                 
                 results.append(result)
                 
-                # Log cada 100 consultas
                 if len(results) % 100 == 0:
                     recent_results = results[-100:]
                     cache_hits = sum(1 for r in recent_results if r.get('cache_hit', False))
@@ -591,16 +565,13 @@ class TrafficGenerator:
 async def main():
     """Función principal del generador de tráfico"""
     
-    # Configuración desde variables de entorno
     mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://admin:password123@localhost:27017/traffic_db?authSource=admin')
     cache_uri = os.getenv('CACHE_URI', 'http://localhost:8080')
     poisson_lambda = float(os.getenv('POISSON_LAMBDA', '10'))
     exponential_lambda = float(os.getenv('EXPONENTIAL_LAMBDA', '0.1'))
     
-    # Crear generador
     generator = TrafficGenerator(mongodb_uri, cache_uri, poisson_lambda, exponential_lambda)
     
-    # Esperar a que el sistema de caché esté disponible
     logger.info("Esperando que el sistema de caché esté disponible...")
     for attempt in range(30):
         try:
@@ -618,15 +589,12 @@ async def main():
         logger.error("Sistema de caché no disponible después de 5 minutos")
         return
     
-    # Ejecutar modo de operación
     mode = os.getenv('TRAFFIC_MODE', 'comparative')
     
     if mode == 'comparative':
-        # Pruebas comparativas
         duration = int(os.getenv('TEST_DURATION_MINUTES', '10'))
         results = await generator.run_comparative_test(duration)
         
-        # Guardar resultados
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"/app/logs/traffic_test_results_{timestamp}.json"
         
@@ -635,7 +603,6 @@ async def main():
         
         logger.info(f"Resultados guardados en {filename}")
         
-        # Mostrar resumen
         for dist_type, result in results.items():
             if isinstance(result, dict) and 'summary' in result:
                 summary = result['summary']
@@ -649,7 +616,6 @@ async def main():
                 logger.info(f"P95: {response_times['p95']:.3f}s")
     
     elif mode == 'continuous':
-        # Tráfico continuo
         hours = int(os.getenv('CONTINUOUS_HOURS', '1'))
         results = await generator.run_continuous_traffic(hours)
         
@@ -657,19 +623,16 @@ async def main():
         logger.info(f"Estadísticas finales: {generator.get_generator_stats()}")
     
     elif mode == 'poisson':
-        # Solo Poisson
         duration = int(os.getenv('TEST_DURATION_MINUTES', '10'))
         results = await generator.run_poisson_traffic(duration)
         logger.info(f"Prueba Poisson completada: {results}")
     
     elif mode == 'exponential':
-        # Solo Exponencial
         duration = int(os.getenv('TEST_DURATION_MINUTES', '10'))
         results = await generator.run_exponential_traffic(duration)
         logger.info(f"Prueba Exponencial completada: {results}")
     
     elif mode == 'burst':
-        # Solo ráfagas
         num_bursts = int(os.getenv('NUM_BURSTS', '5'))
         burst_size = int(os.getenv('BURST_SIZE', '20'))
         burst_interval = int(os.getenv('BURST_INTERVAL', '30'))

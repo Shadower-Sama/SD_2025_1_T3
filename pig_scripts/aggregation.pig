@@ -1,7 +1,4 @@
--- Script Pig para agregaciones complejas y métricas avanzadas
--- Análisis sofisticados para insights estratégicos
--- Autor: Sistema de Análisis de Tráfico RM
--- Fecha: 2025-06-29
+
 
 -- Definir parámetros
 %default INPUT_PATH '/traffic_data/filtered_events'

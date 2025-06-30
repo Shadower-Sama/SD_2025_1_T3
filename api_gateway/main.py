@@ -21,14 +21,12 @@ from pymongo import MongoClient
 import redis
 import uvicorn
 
-# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Modelos Pydantic
 class TrafficQuery(BaseModel):
     municipality: Optional[str] = None
     event_type: Optional[str] = None
@@ -44,7 +42,6 @@ class AnalysisRequest(BaseModel):
     analysis_type: str
     parameters: Optional[Dict] = {}
 
-# Configuración de la aplicación
 app = FastAPI(
     title="Sistema de Análisis de Tráfico - API Gateway",
     description="API unificada para el análisis de tráfico en la Región Metropolitana",
@@ -53,7 +50,6 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -66,17 +62,14 @@ class APIGateway:
     """Gateway principal del sistema"""
     
     def __init__(self):
-        # URIs de servicios
         self.mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://admin:password123@mongodb:27017/traffic_db?authSource=admin')
         self.redis_uri = os.getenv('REDIS_URI', 'redis://redis:6379')
         self.elasticsearch_uri = os.getenv('ELASTICSEARCH_URI', 'http://elasticsearch:9200')
         self.cache_service_uri = os.getenv('CACHE_SERVICE_URI', 'http://cache_system:8080')
         self.visualization_uri = os.getenv('VISUALIZATION_URI', 'http://visualization:3000')
         
-        # Conectar a servicios
         self.setup_connections()
         
-        # Métricas del gateway
         self.requests_count = 0
         self.error_count = 0
         self.response_times = []
@@ -86,14 +79,14 @@ class APIGateway:
     def setup_connections(self):
         """Configura las conexiones a los servicios"""
         try:
-            # MongoDB
+            
             self.mongo_client = MongoClient(self.mongodb_uri)
             self.db = self.mongo_client.traffic_db
             
-            # Redis
+           
             self.redis_client = redis.from_url(self.redis_uri, decode_responses=True)
             
-            # Elasticsearch
+            
             self.es_client = Elasticsearch([self.elasticsearch_uri])
             
             logger.info("Conexiones establecidas exitosamente")
@@ -160,7 +153,7 @@ class APIGateway:
                 'performance': {}
             }
             
-            # Estado de servicios
+            
             services = {
                 'cache_system': self.cache_service_uri,
                 'elasticsearch': self.elasticsearch_uri,
@@ -190,7 +183,7 @@ class APIGateway:
                     except:
                         overview['services'][service_name] = False
             
-            # Resumen de datos
+           
             try:
                 overview['data_summary'] = {
                     'total_events': self.db.waze_events.count_documents({}),
@@ -203,7 +196,7 @@ class APIGateway:
             except Exception as e:
                 overview['data_summary'] = {'error': str(e)}
             
-            # Métricas de rendimiento del gateway
+            
             avg_response_time = sum(self.response_times) / len(self.response_times) if self.response_times else 0
             error_rate = self.error_count / self.requests_count if self.requests_count > 0 else 0
             
@@ -220,10 +213,10 @@ class APIGateway:
             logger.error(f"Error obteniendo overview del sistema: {e}")
             return {'error': str(e), 'timestamp': datetime.now().isoformat()}
 
-# Instancia global del gateway
+
 gateway = APIGateway()
 
-# Endpoints principales
+
 
 @app.get("/")
 async def root():
@@ -246,7 +239,7 @@ async def root():
 async def health_check():
     """Health check del API Gateway"""
     try:
-        # Verificar conexiones básicas
+        
         gateway.mongo_client.admin.command('ping')
         gateway.redis_client.ping()
         
@@ -266,7 +259,7 @@ async def system_overview():
     """Resumen general del estado del sistema"""
     return gateway.get_system_overview()
 
-# Endpoints para consultas de datos
+
 
 @app.post("/query")
 async def query_traffic_data(query: TrafficQuery):
@@ -334,7 +327,7 @@ async def get_events_by_municipality(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoints para caché
+
 
 @app.get("/cache/stats")
 async def get_cache_stats():
@@ -356,7 +349,7 @@ async def get_cache_config():
         "current_size": stats.get("size", 0)
     }
 
-# Endpoints para agregaciones
+
 
 @app.get("/aggregation/{agg_type}")
 async def get_aggregation(agg_type: str):
@@ -376,7 +369,7 @@ async def post_aggregation(agg_type: str, params: Dict = None):
         data=params or {}
     )
 
-# Endpoints para análisis
+
 
 @app.get("/analysis/municipalities")
 async def get_municipality_analysis():
@@ -402,7 +395,7 @@ async def get_hourly_analysis():
         "/aggregation/hourly_distribution"
     )
 
-# Endpoints para métricas y monitoreo
+
 
 @app.get("/metrics/system")
 async def get_system_metrics():
@@ -414,11 +407,11 @@ async def get_system_metrics():
                 "requests_processed": gateway.requests_count,
                 "errors": gateway.error_count,
                 "avg_response_time": sum(gateway.response_times) / len(gateway.response_times) if gateway.response_times else 0,
-                "uptime": "N/A"  # Se podría implementar con tiempo de inicio
+                "uptime": "N/A"  
             }
         }
         
-        # Agregar métricas de caché
+        
         try:
             cache_stats = gateway.proxy_request(gateway.cache_service_uri, "/cache/stats")
             metrics["cache"] = cache_stats
@@ -433,7 +426,7 @@ async def get_system_metrics():
 async def get_performance_metrics():
     """Métricas de rendimiento detalladas"""
     try:
-        # Métricas del gateway
+        
         gateway_metrics = {
             "total_requests": gateway.requests_count,
             "error_count": gateway.error_count,
@@ -446,7 +439,7 @@ async def get_performance_metrics():
             }
         }
         
-        # Métricas de MongoDB
+        
         try:
             db_stats = gateway.db.command("dbStats")
             mongodb_metrics = {
@@ -458,7 +451,7 @@ async def get_performance_metrics():
         except:
             mongodb_metrics = {"status": "unavailable"}
         
-        # Métricas de Elasticsearch
+        
         try:
             es_stats = gateway.es_client.cluster.stats()
             elasticsearch_metrics = {
@@ -480,7 +473,6 @@ async def get_performance_metrics():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoints para búsquedas avanzadas
 
 @app.post("/search/events")
 async def search_events(
@@ -489,7 +481,7 @@ async def search_events(
 ):
     """Búsqueda de texto en eventos"""
     try:
-        # Buscar en MongoDB usando regex
+        
         regex_query = {"$regex": query, "$options": "i"}
         
         cursor = gateway.db.waze_events.find({
@@ -543,15 +535,15 @@ async def get_event_types():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Middleware para logging
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     
-    # Procesar request
+    
     response = await call_next(request)
     
-    # Log de la request
+    
     process_time = time.time() - start_time
     logger.info(
         f"{request.method} {request.url.path} - "
@@ -562,7 +554,7 @@ async def log_requests(request: Request, call_next):
     
     return response
 
-# Manejo de errores
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -591,14 +583,14 @@ async def general_exception_handler(request: Request, exc: Exception):
 def main():
     """Función principal para ejecutar el API Gateway"""
     
-    # Configuración del servidor
+    
     host = os.getenv('API_HOST', '0.0.0.0')
     port = int(os.getenv('API_PORT', '8000'))
     workers = int(os.getenv('WORKERS', '1'))
     
     logger.info(f"Iniciando API Gateway en {host}:{port}")
     
-    # Verificar conexiones antes de iniciar
+ 
     try:
         gateway.setup_connections()
         logger.info("Conexiones verificadas exitosamente")
@@ -606,7 +598,6 @@ def main():
         logger.error(f"Error en conexiones iniciales: {e}")
         logger.info("Continuando de todas formas...")
     
-    # Configuración de uvicorn
     config = uvicorn.Config(
         app,
         host=host,
