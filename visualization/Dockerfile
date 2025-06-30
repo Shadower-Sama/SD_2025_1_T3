@@ -37,4 +37,13 @@ CMD ["python", "main.py"]
 
 # Healthcheck
 HEALTHCHECK --interval=60s --timeout=15s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:9200/_cluster/health || python -c "
+     CMD curl -f http://localhost:9200/_cluster/health || python -c "
+import requests
+try:
+    import os
+    es_uri = os.getenv('ELASTICSEARCH_URI', 'http://elasticsearch:9200')
+    r = requests.get(f'{es_uri}/_cluster/health', timeout=10)
+    exit(0 if r.status_code == 200 else 1)
+except:
+    exit(1)
+"
