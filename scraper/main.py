@@ -81,7 +81,7 @@ class WazeScraper:
         events = []
         
         # URL de la API de Waze (no oficial)
-        waze_api_url = "https://www.waze.com/row-rtserver/web/TGeoRSS"
+        waze_api_url = "https://www.waze.com/live-map/api/georss?top=-33.318727734058896&bottom=-33.646196973860725&left=-70.77952194213869&right=-70.502254486084&env=row&types=alerts,traffic"
         
         params = {
             'tk': 'ccp_partner',
